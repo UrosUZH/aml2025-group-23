@@ -1,0 +1,27 @@
+name: signclip_dev
+channels:
+  - conda-forge
+  - defaults
+  - pytorch
+dependencies:
+  # core pinned versions
+  - python=3.8.8
+  - pip=23.3
+  - cudatoolkit=11.1          # ← match the base image
+  - pytorch=1.9.1=cuda111*    # ← cu110 wheel
+  - torchvision=0.10.1         # PyTorch-1.8 companion
+  # data / science helpers
+  - pandas
+  - scikit-learn
+  - tensorflow-datasets
+  # build utils
+  - pip
+  - pip:
+      - transformers==3.4
+      - mediapipe
+      - sign-language-datasets
+      - pose-format
+      # optional extras for certain experiments
+      - git+https://github.com/sign-language-processing/pose-anonymization
+      - git+https://github.com/sign-language-processing/sign-vq
+      - git+https://github.com/sign-language-processing/transcription.git@1f2cef8

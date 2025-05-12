@@ -1,0 +1,46 @@
+###############################################################################
+# SignCLIP – inference/API image with 4 pretrained checkpoints
+###############################################################################
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+ARG USER=signclip
+ENV HOME=/home/${USER} \
+    TRANSFORMERS_CACHE=/home/${USER}/.cache/huggingface
+
+RUN useradd -m -s /bin/bash ${USER}
+
+# ── miniconda + mamba ────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y wget bzip2 ca-certificates git \
+ && wget -qO ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+ && bash ~/miniconda.sh -b -p /opt/conda && rm ~/miniconda.sh
+ENV PATH=/opt/conda/bin:$PATH
+RUN conda install -y -c conda-forge mamba && conda clean -afy
+
+# ── clone SignCLIP repo (for app.py, demo scripts, etc.) ─────────────────────
+RUN git clone --depth 1 https://github.com/J22Melody/fairseq.git ${HOME}/fairseq
+
+# ── build the Python-3.12 / Torch-2.6 env from yaml ─────────────────────────
+RUN mamba env create -n signclip_inf \
+      -f /home/${USER}/fairseq/examples/MMPT/environment_inference.yml \
+ && conda clean -afy
+
+# ── install Flask inside that env ────────────────────────────────────────────
+SHELL ["conda", "run", "-n", "signclip_inf", "/bin/bash", "-c"]
+RUN pip install --no-cache-dir flask flask_cors gdown
+
+# ── download the 4 requested checkpoints -------------------------------------
+WORKDIR ${HOME}/fairseq/examples/MMPT
+RUN mkdir -p /models && \
+    gdown 1_B_VZMaLqY1nV6z9AokWU_G6LvOQLZFu  -O /models/baseline_temporal.pt      && \
+    gdown 1qst_2vt8zeNnmEEiONfkqa1ApMSgwU1t  -O /models/asl_signs.pt              && \
+    gdown 1ZIdQ8rKGU5Rqrl2rUwfL_tSwRRWLZGQb  -O /models/asl_finetune.pt           && \
+    gdown 166aUSU5HkrMlpCkMNQF_rBLymX56P3fn  -O /models/asl_citizen_finetune.pt
+
+# ── runtime defaults ----------------------------------------------------------
+USER ${USER}
+WORKDIR ${HOME}/fairseq
+EXPOSE 3030
+
+# Choose which weight to load via MODEL_PATH (default = baseline_temporal)
+ENV MODEL_PATH=/models/baseline_temporal.pt
+CMD ["conda", "run", "-n", "signclip_inf", "gunicorn", "-w", "4", "-t", "300", "-b", "0.0.0.0:3030", "app:app"]
