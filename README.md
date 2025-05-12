@@ -9,8 +9,16 @@
 ## Project scope
 
 - This is an advanced machine learning project
-- it is an extension of https://github.com/J22Melody/fairseq/tree/main/examples/MMPT
+- it is an extension of     
 - Goal is to generate sentences from ASL videos
+
+
+use Connectionist Temporal Classification (CTC) same as they do in audio modern speech recognition.
+https://dl.acm.org/doi/pdf/10.1145/3131672.3131693
+
+
+poses can be segmented
+
 
 ## Pipeline draft
 
