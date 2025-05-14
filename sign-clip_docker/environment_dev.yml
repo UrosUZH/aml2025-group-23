@@ -7,20 +7,23 @@ dependencies:
   # core pinned versions
   - python=3.8.8
   - pip=23.3
-  - cudatoolkit=11.1          # ← match the base image
-  - pytorch=1.9.1=cuda111*    # ← cu110 wheel
-  - torchvision=0.10.1         # PyTorch-1.8 companion
+  - cudatoolkit=11.8          # ← match the base image
+  - pytorch=2.0.1    # ← cu118 wheel
+  - torchvision=0.15.2         # PyTorch-1.13.1 companion
   # data / science helpers
   - pandas
   - scikit-learn
   - tensorflow-datasets
   # build utils
-  - pip
   - pip:
       - transformers==3.4
       - mediapipe
       - sign-language-datasets
       - pose-format
+      - omegaconf<2.1
+      - torchaudio==2.0.2
+      - bitarray
+      - hydra-core>=1.0.7,<1.1
       # optional extras for certain experiments
       - git+https://github.com/sign-language-processing/pose-anonymization
       - git+https://github.com/sign-language-processing/sign-vq

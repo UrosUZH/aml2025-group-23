@@ -1,7 +1,7 @@
 ###############################################################################
 # SignCLIP – development / training image (root user)
 ###############################################################################
-FROM nvidia/cuda:11.1.1-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 # ---------- basic settings ---------------------------------------------------
 ENV DEBIAN_FRONTEND=noninteractive
@@ -17,7 +17,7 @@ RUN apt-get update && \
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:/opt/conda/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
-ENV TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6"
+ENV TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6;8.9"
 
 # ---------- Miniconda + mamba -------------------------------------------------
 RUN wget -qO /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
@@ -34,7 +34,13 @@ RUN mamba env create -n signclip_dev -f /tmp/environment_dev.yml && \
 # ---------- Override pip upgrades of torch ------------------------------------
 # Remove any pip torch override and ensure conda one is active
 RUN conda run -n signclip_dev pip uninstall -y torch torchvision torchaudio || true && \
-    conda run -n signclip_dev conda install -y pytorch=1.9.1 torchvision=0.10.1 cudatoolkit=11.1 -c pytorch -c conda-forge
+    conda run -n signclip_dev pip install --no-cache-dir torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2 \
+    --extra-index-url https://download.pytorch.org/whl/cu118
+
+# ── system libraries ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+libgl1 \
+libglib2.0-0
 
 # All remaining RUN commands execute inside the conda env
 SHELL ["conda", "run", "-n", "signclip_dev", "/bin/bash", "-c"]
@@ -54,7 +60,8 @@ RUN pip install --no-build-isolation --no-deps . && \
     pip install --no-build-isolation --no-deps -e . && \
     pip install --no-build-isolation --no-deps -e examples/MMPT
 
+RUN 
+
 # ---------- runtime defaults --------------------------------------------------
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 WORKDIR /workspace
-CMD ["conda", "run", "-n", "signclip_dev", "bash"]
