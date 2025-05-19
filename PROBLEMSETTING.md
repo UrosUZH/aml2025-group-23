@@ -1,3 +1,9 @@
+## Team members
+
+- **Uros Dimitrijevic**: uros.dimitrijevic@uzh.ch | 15-936-834
+- **Roham Zendehdel Nobari**: roham.zendehdelnobari@uzh.ch | 23-755-432
+- **Mohammad Mahdi Hejazi**: mohammadmahdi.hejazi@uzh.ch | 24-748-998
+
 # Motivation & Goal
 
 With technology increasingly central to daily life and faster, more responsive tools replacing legacy systems, our focus is on bridging the gap between hearing-impaired individuals and computers to help them relay their thoughts more quickly and effectively.
