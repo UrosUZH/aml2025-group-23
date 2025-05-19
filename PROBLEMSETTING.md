@@ -4,6 +4,7 @@ The primary goal is to explore whether pretrained sign-to-text models, specifica
 
 # Problem Setting
 
+
 We address the task of translating sign language videos/pose sequences into natural language sentences. Formally, let  
 **x = ⟨x₁, x₂, ..., x_T⟩**,
 where each **xᵢ ∈ ℝ^D** denotes a D-dimensional vector representing human pose features at time step *i*. Given such an input sequence, the goal is to generate a sequence  
@@ -27,13 +28,27 @@ While the model is fixed, we explore the impact of several hyperparameters durin
 - Window stride (s)
 - Decoding strategy
 
+## Pipeline Descriptions
+
+We consider two main pipelines:
+
+### 1. Baseline Pipeline (Greedy Concatenation)
+
+- Long sentence level sign videos are segmented using a **sliding window** procedure.
+- For each window, **SignCLIP** predicts the **most probable gloss/text**.
+- The predicted words from each window are **concatenated** to form a sentence.
+
+### 2. Transformer Pipeline (Top-k + Language Model)
+
+- Each segment is again passed through **SignCLIP** to extract the **top-10 highest probable glosses**.
+- A **Transformer-based language model** is used to generate coherent sentence-level outputs from these gloss sets using methods like **beam search**.
+
 # Evaluation Protocol
 
 We follow a consistent evaluation protocol across all experiments:
 
 - Input-output pairs are drawn from a sentence-level annotated dataset, [How2Sign](https://how2sign.github.io/).
 - Pose sequences are split into segments using fixed-length windows with overlap.
-- Each segment is decoded into natural language using standard decoding methods.
 - The outputs from all segments are merged into a complete sentence.
 
 We evaluate the generated sentences against ground-truth references using one of the following standard metrics for text generation:
