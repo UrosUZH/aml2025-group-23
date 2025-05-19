@@ -2,13 +2,13 @@
   "name": "SignCLIP Dev (Windows)",
   "image": "rohamzn/signclip_dev:1.0",
   "runArgs": [
-    "--gpus", "all",
+    // "--gpus", "all",
     "--name", "devcontainer_sign"
   ],
   "workspaceFolder": "/workspace",
   "mounts": [
     // Bind your local AML folder into the container
-    "source=${localWorkspaceFolder},target=/workspace/fairseq/aml,type=bind"
+    "source=${localWorkspaceFolder},target=/workspace/aml,type=bind"
   ],
   "features": {
     // This will install & configure OpenSSH client/server inside the container,
@@ -47,18 +47,3 @@
 
 
 
-
-// {
-//   "name": "SignCLIP Dev Container",
-//   "build": {
-//     "dockerfile": "Dockerfile.dev",
-//     "context": ".."
-//   },
-//   "workspaceFolder": "/workspace",
-//   "mounts": [
-//     "source=${localWorkspaceFolder}/fairseq,target=/workspace/fairseq,type=bind"
-//   ],
-//   "postCreateCommand": "cd /workspace/fairseq && pip install --no-build-isolation --no-deps . && pip install --no-build-isolation --no-deps -e . && pip install --no-build-isolation --no-deps -e examples/MMPT",
-//   "remoteUser": "root",
-//   // "extensions": ["ms-python.python"]
-// }
