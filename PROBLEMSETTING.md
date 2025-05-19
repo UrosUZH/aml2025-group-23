@@ -1,17 +1,20 @@
-# Goal
+# Motivation & Goal
 
+With technology increasingly central to daily life and faster, more responsive tools replacing legacy systems, our focus is on bridging the gap between hearing-impaired individuals and computers to help them relay their thoughts more quickly and effectively.
 The primary goal is to explore whether pretrained sign-to-text models, specifically those trained at the gloss level, can generalize to sentence-level generation in a zero-shot setup. This serves as a step toward understanding the limits and capabilities of current pretrained models in bridging pose-based sign language data and spoken language output.
 
 # Problem Setting
 
+We address the task of translating sign language video sequences into natural language sentences. Formally, let  
 
-We address the task of translating sign language videos/pose sequences into natural language sentences. Formally, let  
-**x = ⟨x₁, x₂, ..., x_T⟩**,
-where each **xᵢ ∈ ℝ^D** denotes a D-dimensional vector representing human pose features at time step *i*. Given such an input sequence, the goal is to generate a sequence  
-**y = ⟨y₁, y₂, ..., y_N⟩**,
-where each **yⱼ** is a token from a fixed output vocabulary **V**, and *N* is the length of the generated sentence. This defines a sequence-to-sequence mapping problem from pose-based input to natural language output.
+$F = <f_1, f_2, ...f_N>$
 
-Let **f: ℝ^{T×D} → V^N** denote the model used for this mapping. We investigate whether a pretrained model **f**, initially trained to associate pose data with single-word glosses, can generalize to sentence-level generation in a **zero-shot** setting.
+be the frames of our video sequence. Our task is to generate a sequence of gloss 
+
+$G = <g_1, g_2, ..., g_M>$
+
+which forms a meaningful sentence describing what is being said in the video, and each gloss $g_i$ is a word from our vocabulary $V$.
+Let $f: ℝ^N → V^M$ denote the model used for this mapping. We investigate whether a pretrained model $f$, initially trained to associate pose data with single-word glosses, can generalize to sentence-level generation in a **zero-shot** setting.
 
 # Approach
 
