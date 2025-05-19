@@ -1,0 +1,64 @@
+{
+  "name": "SignCLIP Dev (Windows)",
+  "image": "rohamzn/signclip_dev:1.0",
+  "runArgs": [
+    "--gpus", "all",
+    "--name", "devcontainer_sign"
+  ],
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    // Bind your local AML folder into the container
+    "source=${localWorkspaceFolder},target=/workspace/fairseq/aml,type=bind"
+  ],
+  "features": {
+    // This will install & configure OpenSSH client/server inside the container,
+    // and enable Docker Desktop’s built-in agent forwarding on Windows.
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+  "remoteEnv": {
+    // Use the container’s SSH_AUTH_SOCK (set up by the sshd feature)
+    "SSH_AUTH_SOCK": "/run/ssh-agent.sock"
+  },
+  // "postCreateCommand": "echo 'Container ready.'",
+  // "postCreateCommand": "echo 'source /opt/conda/etc/profile.d/conda.sh && conda activate signclip_dev' >> ~/.bash_profile",
+  "postCreateCommand": "bash -lc \"{\n  echo '>>> Initializing Conda in .bashrc';\n  cat << 'EOF' >> ~/.bashrc\n# >>> conda initialize >>>\nsource /opt/conda/etc/profile.d/conda.sh\nconda activate signclip_dev\n# <<< conda initialize <<<\nEOF\n}\"",
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "remote.SSH.agentForwarding": true,
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash",
+            "args": ["-l"]
+          }
+        },
+        "dev.containers.copyGitConfig": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}
+
+
+
+
+// {
+//   "name": "SignCLIP Dev Container",
+//   "build": {
+//     "dockerfile": "Dockerfile.dev",
+//     "context": ".."
+//   },
+//   "workspaceFolder": "/workspace",
+//   "mounts": [
+//     "source=${localWorkspaceFolder}/fairseq,target=/workspace/fairseq,type=bind"
+//   ],
+//   "postCreateCommand": "cd /workspace/fairseq && pip install --no-build-isolation --no-deps . && pip install --no-build-isolation --no-deps -e . && pip install --no-build-isolation --no-deps -e examples/MMPT",
+//   "remoteUser": "root",
+//   // "extensions": ["ms-python.python"]
+// }

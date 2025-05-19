@@ -1,0 +1,68 @@
+###############################################################################
+# SignCLIP – development / training image (root user)
+###############################################################################
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+
+# ---------- basic settings ---------------------------------------------------
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/root
+
+# ---------- system tool-chain -------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential git wget bzip2 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---------- CUDA env ----------------------------------------------------------
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:/opt/conda/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6;8.9"
+
+# ---------- Miniconda + mamba -------------------------------------------------
+RUN wget -qO /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh && \
+    conda install -y -c conda-forge mamba && \
+    conda clean -afy
+
+# ---------- Conda env setup (Python 3.8 + Torch 1.9 + Cuda 11.1) --------------
+COPY environment_dev.yml /tmp/
+RUN mamba env create -n signclip_dev -f /tmp/environment_dev.yml && \
+    conda clean -afy
+
+# ---------- Override pip upgrades of torch ------------------------------------
+# Remove any pip torch override and ensure conda one is active
+RUN conda run -n signclip_dev pip uninstall -y torch torchvision torchaudio || true && \
+    conda run -n signclip_dev pip install --no-cache-dir torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2 \
+    --extra-index-url https://download.pytorch.org/whl/cu118
+
+# ── system libraries ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+libgl1 \
+libglib2.0-0
+
+# All remaining RUN commands execute inside the conda env
+SHELL ["conda", "run", "-n", "signclip_dev", "/bin/bash", "-c"]
+
+# ---------- sanity check ------------------------------------------------------
+RUN python -c "import torch, subprocess; print('>>> Torch version =', torch.__version__); print('>>> Torch CUDA =', torch.version.cuda); print('>>> nvcc version =', subprocess.check_output(['nvcc', '--version']).decode().split()[-1])"
+
+# ---------- clone SignCLIP fork of fairseq & dual-install --------------------
+# WORKDIR /workspace
+# WORKDIR /workspace/fairseq
+# RUN git clone https://github.com/J22Melody/fairseq.git
+
+WORKDIR /workspace/fairseq
+
+# RUN pip install cython>=0.29
+
+# # RUN pip install --no-build-isolation --no-deps . && \
+# #     pip install --no-build-isolation --no-deps -e . && \
+# #     pip install --no-build-isolation --no-deps -e examples/MMPT
+
+RUN 
+
+# ---------- runtime defaults --------------------------------------------------
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
+WORKDIR /workspace
