@@ -54,8 +54,8 @@ We consider two main pipelines:
 - Each segment is again passed through **SignCLIP** to extract the **top-10 highest probable glosses**.
 - A **Transformer-based language model** is used to generate coherent sentence-level outputs from these gloss sets using methods like **beam search**.
 
-### 3. Finetuning
-- If time allows, we will try fine‑tuning by adding a Connectionist Temporal Classification (CTC) head on top of the frozen SignCLIP embeddings. 
+### 3. Finetuning (If Time Allows)
+- When gloss‑aligned videos are scarce but sentence‑level transcripts exist, we keep SignCLIP frozen and fine‑tune **only** the Transformer language model. For each window we sample several gloss candidates, and the LM learns—via a prefix objective—to rewrite those noisy strings into fluent sentences. This boosts grammaticality and word order without touching the vision backbone (SignCLIP).
 
 # Evaluation Protocol
 
