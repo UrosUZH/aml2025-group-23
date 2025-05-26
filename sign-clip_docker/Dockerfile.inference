@@ -39,10 +39,12 @@ RUN mkdir -p runs/retri_v1_1/baseline_temporal \
     && mkdir -p runs/retri_asl/asl_signs \
     && mkdir -p runs/retri_asl/asl_finetune \
     && mkdir -p runs/signclip_asl/asl_citizen_finetune \
+    && mkdir -p runs/signclip_asl/asl_pop_sign_finetune \
     && gdown 1_B_VZMaLqY1nV6z9AokWU_G6LvOQLZFu  -O runs/retri_v1_1/baseline_temporal/checkpoint_best.pt \
     && gdown 1qst_2vt8zeNnmEEiONfkqa1ApMSgwU1t  -O runs/retri_asl/asl_signs/checkpoint_best.pt \
     && gdown 1ZIdQ8rKGU5Rqrl2rUwfL_tSwRRWLZGQb  -O runs/retri_asl/asl_finetune/checkpoint_best.pt \
-    && gdown 166aUSU5HkrMlpCkMNQF_rBLymX56P3fn  -O runs/signclip_asl/asl_citizen_finetune/checkpoint_best.pt
+    && gdown 166aUSU5HkrMlpCkMNQF_rBLymX56P3fn  -O runs/signclip_asl/asl_citizen_finetune/checkpoint_best.pt \
+	&& gdown 1kyneTEzmsMyOZvw7-O0b7PEU9Wnn7I_Q  -O runs/signclip_asl/asl_pop_sign_finetune/checkpoint_best.pt
 
 # ── runtime defaults ----------------------------------------------------------
 WORKDIR ${HOME}/fairseq

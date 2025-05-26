@@ -31,6 +31,14 @@ output:
 # TODO: Step 4: Pass the sentences to Evaluation and get comparison result
 # TODO: Step 5: Show plots, etc if needed
 
+#! How to Import
+# import sys
+# sys.path.insert(1, '/home/signclip/fairseq/examples/MMPT')
+# from mmpt.models import MMPTModel
+# import os
+# os.chdir('/home/signclip/fairseq/examples/MMPT')
+
+
 def run():
     pass
 

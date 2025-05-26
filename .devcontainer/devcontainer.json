@@ -21,7 +21,7 @@
   },
   // "postCreateCommand": "echo 'Container ready.'",
   // "postCreateCommand": "echo 'source /opt/conda/etc/profile.d/conda.sh && conda activate sign_clip_inference' >> ~/.bash_profile",
-  "postCreateCommand": "bash -lc \"{\n  echo '>>> Initializing Conda in .bashrc';\n  cat << 'EOF' >> ~/.bashrc\n# >>> conda initialize >>>\nsource /opt/conda/etc/profile.d/conda.sh\nconda activate sign_clip_inference\n# <<< conda initialize <<<\nEOF\n}\"",
+  "postCreateCommand": "bash -lc \"{\n  echo '>>> Initializing Conda in .bashrc';\n  cat << 'EOF' >> ~/.bashrc\n# >>> conda initialize >>>\nsource /opt/conda/etc/profile.d/conda.sh\nconda activate signclip_inf\n# <<< conda initialize <<<\nEOF\n}\"",
   "remoteUser": "root",
   "customizations": {
     "vscode": {
