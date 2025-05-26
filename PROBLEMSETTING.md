@@ -6,7 +6,7 @@
 
 # Motivation & Goal
 
-With technology increasingly central to daily life and faster, more responsive tools replacing legacy systems, our focus is on bridging the gap between hearing-impaired individuals and computers to help them relay their thoughts more quickly and effectively.
+With technology becoming increasingly faster and central to daily life, our focus is on bridging the gap between hearing-impaired individuals and computers to help them relay their thoughts more quickly and effectively.
 The primary goal is to explore whether pretrained sign-to-text models, specifically those trained at the gloss level, can generalize to sentence-level generation in a zero-shot setup. This serves as a step toward understanding the limits and capabilities of current pretrained models in bridging pose-based sign language data and spoken language output.
 
 # Problem Setting
@@ -15,7 +15,7 @@ We address the task of translating sign language video sequences into natural la
 
 $F = <f_1, f_2, ...f_N>$
 
-be the frames of our video sequence. Our task is to generate a sequence of gloss 
+be the frames of our video sequence. Our task is to generate a sequence of glosses
 
 $G = <g_1, g_2, ..., g_M>$
 
@@ -24,7 +24,7 @@ Let $f: ℝ^N → V^M$ denote the model used for this mapping. We investigate wh
 
 # Approach
 
-We use a pretrained model based on the SignCLIP architecture. While SignCLIP was trained to align isolated signs with textual labels, we aim to evaluate its ability to produce full spoken language sentences without additional training or fine-tuning.
+We use a pretrained model based on the [SignCLIP](https://github.com/J22Melody/fairseq/tree/main/examples/MMPT) architecture. While SignCLIP was trained to align isolated signs with textual labels, we aim to evaluate its ability to produce full spoken language sentences without additional training or fine-tuning.
 
 To accommodate longer input sequences, we use a **sliding window** approach, where input pose sequences are divided into overlapping segments of fixed length. Each segment is processed independently, and outputs from multiple segments are combined to produce a final sentence-level prediction.
 
