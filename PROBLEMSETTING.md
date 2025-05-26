@@ -1,3 +1,9 @@
+## Team members
+
+- **Uros Dimitrijevic**: uros.dimitrijevic@uzh.ch | 15-936-834
+- **Roham Zendehdel Nobari**: roham.zendehdelnobari@uzh.ch | 23-755-432
+- **Mohammad Mahdi Hejazi**: mohammadmahdi.hejazi@uzh.ch | 24-748-998
+
 # Motivation & Goal
 
 With technology increasingly central to daily life and faster, more responsive tools replacing legacy systems, our focus is on bridging the gap between hearing-impaired individuals and computers to help them relay their thoughts more quickly and effectively.
@@ -31,6 +37,8 @@ While the model is fixed, we explore the impact of several hyperparameters durin
 - Window stride (s)
 - Decoding strategy
 
+The process of choosing hyperparameters is based on the cross-validation score we receive from the how2sign validation/train dataset. Based on the score, we pick the best hyperparameters to evaluate the model on the how2sign test dataset.
+
 ## Pipeline Descriptions
 
 We consider two main pipelines:
@@ -45,6 +53,9 @@ We consider two main pipelines:
 
 - Each segment is again passed through **SignCLIP** to extract the **top-10 highest probable glosses**.
 - A **Transformer-based language model** is used to generate coherent sentence-level outputs from these gloss sets using methods like **beam search**.
+
+### 3. Finetuning (If Time Allows)
+- When gloss‑aligned videos are scarce but sentence‑level transcripts exist, we keep SignCLIP frozen and fine‑tune **only** the Transformer language model. For each window we sample several gloss candidates, and the LM learns—via a prefix objective—to rewrite those noisy strings into fluent sentences. This boosts grammaticality and word order without touching the vision backbone (SignCLIP).
 
 # Evaluation Protocol
 
