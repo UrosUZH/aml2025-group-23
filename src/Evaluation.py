@@ -58,7 +58,7 @@ def write_golden_and_permuted_files_modular(golden_sentences, output_golden_path
 def noisy_permutation(sentences, replace_prob=0.3):
     all_words = [word for sent in sentences for word in sent.strip().split()]
     permuted_pool = all_words[:]
-    random.shuffle(permuted_pool)
+    # random.shuffle(permuted_pool)
 
     new_sentences = []
     idx = 0
