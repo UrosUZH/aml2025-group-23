@@ -158,8 +158,10 @@ def run_evaluations():
         print(f"{label:<15} | {bleu*100:6.2f} | {r1*100:7.2f} | {rL*100:7.2f} | {sim*100:6.2f} | {bert_f1*100:6.2f}")
         
         
+import csv  
         
-        
+import csv
+
 def evaluate(
     reference_path: str,
     hypothesis_paths: List[str],
@@ -167,13 +169,19 @@ def evaluate(
     use_bert: bool = False,
     use_cosine: bool = True,
 ):
+    results = []
 
     print("\nEvaluation Results:")
     header = f"{'Variant':<15} | {'BLEU':>6} | {'ROUGE-1':>7} | {'ROUGE-L':>7}"
+    csv_header = ["Variant", "BLEU", "ROUGE-1", "ROUGE-L"]
+    
     if use_cosine:
-        header = header + f" | {'Cosine':>6}"
+        header += f" | {'Cosine':>6}"
+        csv_header.append("Cosine")
+
     if use_bert: 
-        header = header + (" | {:>9}".format("BERT-F1"))
+        header += " | {:>9}".format("BERT-F1")
+        csv_header.append("BERT-F1")
     
     print(header)
     print("-" * len(header))
@@ -181,22 +189,35 @@ def evaluate(
     for label, path in zip(labels, hypothesis_paths):
         bleu = compute_bleu_score(reference_path, path)
         r1, rL = compute_rouge_scores(reference_path, path)
-        
+
+        row = [label, bleu * 100, r1 * 100, rL * 100]
         line = f"{label:<15} | {bleu*100:6.2f} | {r1*100:7.2f} | {rL*100:7.2f}"
+
         if use_cosine:
             cosine_sim = compute_avg_cosine_sim(reference_path, path)
             line += f" | {cosine_sim*100:6.2f}"
+            row.append(cosine_sim * 100)
+
         if use_bert:
             bert_f1 = compute_bertscore_f1(reference_path, path)
             line += f" | {bert_f1*100:9.2f}"
+            row.append(bert_f1 * 100)
 
         print(line)
+        results.append(row)
+    return results, csv_header
+    
 
-
+def save_to_csv(data: List[List[str]],header, output_path: str = "mock_sentences/evaluation_results.csv") -> None:
+    with open(output_path, mode='w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(data)
+    print(f"Saved results to {output_path}")
 
 if __name__ == '__main__':
     make_sentences()
-    evaluate(
+    results, header = evaluate(
     reference_path="mock_sentences/reference.txt",
     hypothesis_paths=[
         "mock_sentences/reference.txt",
@@ -210,3 +231,6 @@ if __name__ == '__main__':
     use_bert=False,
     use_cosine=False
 )
+    save_to_csv(results, header, output_path="mock_sentences/evaluation_results.csv")
+  
+    

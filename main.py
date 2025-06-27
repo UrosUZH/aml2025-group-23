@@ -41,23 +41,25 @@ output:
 
 # EVALUATION
 import src.Evaluation as Evaluation
-from src.Evaluation import evaluate, make_sentences
+from src.Evaluation import evaluate, make_sentences, save_to_csv
 def run_mock_evaluation():
     make_sentences()
-    evaluate(
-        reference_path="mock_sentences/reference.txt",
-        hypothesis_paths=[
-            "mock_sentences/shuffled.txt",
-            "mock_sentences/rand_03.txt",
-            "mock_sentences/rand_05.txt",
-            "mock_sentences/rand_09.txt"
-        ],
-        labels=["Reference", "Shuffled", "Noisy 30%", "Noisy 50%", "Noisy 90%"],
-        use_bert=False,
-        use_cosine=False
-    )
-
-
+    results, header = evaluate(
+    reference_path="mock_sentences/reference.txt",
+    hypothesis_paths=[
+        "mock_sentences/reference.txt",
+        "mock_sentences/shuffled.txt",
+        "mock_sentences/rand_03.txt",
+        "mock_sentences/rand_05.txt",
+        "mock_sentences/rand_09.txt",
+       
+    ],
+    labels=["Reference", "Shuffled", "Noisy 30%", "Noisy 50%", "Noisy 90%"],
+    use_bert=False,
+    use_cosine=False
+)
+    save_to_csv(results, header, output_path="mock_sentences/evaluation_results.csv")
+  
 
 
 
