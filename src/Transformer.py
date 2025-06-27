@@ -46,8 +46,9 @@ class TransformerDecoder:
         self.beam_size = beam_size
 
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        quant_ok = load_in_8bit
 
-        if load_in_8bit:
+        if quant_ok:
             try:
                 bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
                 self.model = AutoModelForCausalLM.from_pretrained(
@@ -84,50 +85,50 @@ class TransformerDecoder:
         logits = out.logits[:, -1, :]
         return torch.log_softmax(logits, dim=-1), out.past_key_values
 
-    def decode(self, candidate_lists: List[List[Tuple[str, float]]]) -> str:  # noqa: D401
-        """Decode a list of SignCLIP windows.
+    @torch.no_grad()
+    def _full_gloss_logprob(self, gloss: str, past) -> Tuple[float, tuple]:
+        """Compute total log-prob for all sub-tokens in gloss string."""
+        toks = self.tokenizer.encode(" " + gloss, add_special_tokens=False)
+        total_lp = 0.0
+        for tid in toks:
+            input_ids = torch.tensor([[tid]], device=self.device)
+            lp, past = self._lm_logprobs(input_ids, past)
+            total_lp += lp[0, tid].item()
+        return total_lp, past
 
-        Each *candidate_lists[t]* is sorted by SignCLIP prob and contains
-        (gloss, prob).  Returns the best sentence string.
-        """
-
-        # beams: (token_list, score, past_key_values)
+    def decode(self, candidate_lists: List[List[Tuple[str, float]]]) -> str:
         bos_id = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
         beams: list[tuple[list[str], float, tuple | None]] = [([], 0.0, None)]
 
-        for window_idx, window in enumerate(candidate_lists):
+        for window in candidate_lists:
             next_beams: list[tuple[list[str], float, tuple | None]] = []
 
             for tokens, score_so_far, past in beams:
-                # building prefix ids
                 if tokens:
                     prefix_text = " ".join(tokens)
-                    prefix_ids = self.tokenizer(prefix_text, return_tensors="pt", add_special_tokens=False).input_ids.to(self.model.device)
-                else:  # first step: feed BOS only
-                    prefix_ids = torch.tensor([[bos_id]], device=self.model.device)
+                    prefix_ids = self.tokenizer(prefix_text, return_tensors="pt", add_special_tokens=False).input_ids.to(self.device)
+                else:
+                    prefix_ids = torch.tensor([[bos_id]], device=self.device)
 
-                lm_logp, past_next = self._lm_logprobs(prefix_ids, past)
+                _, past_next = self._lm_logprobs(prefix_ids, past)
 
                 for gloss, p_s in window:
-                    # allow multi‑token glosses: use first sub‑token for LM score
-                    tid_list = self.tokenizer.encode(gloss, add_special_tokens=False)
-                    if not tid_list:
-                        continue  # empty after tokenisation
-                    tid = tid_list[0]
-                    logp_lm = lm_logp[0, tid].item()
+                    if not gloss.strip():
+                        continue
+                    try:
+                        logp_lm, past_out = self._full_gloss_logprob(gloss, past_next)
+                    except Exception:
+                        continue
 
-                    combined = score_so_far + self.alpha * logp_lm + self.beta * math.log(p_s + 1e-12)
-                    next_beams.append((tokens + [gloss], combined, past_next))
+                    score = score_so_far + self.alpha * logp_lm + self.beta * math.log(p_s + 1e-12)
+                    next_beams.append((tokens + [gloss], score, past_out))
 
-            # sanity: if no valid continuations
             if not next_beams:
-                # fallback: choose top‑signclip gloss from this window for all beams
                 best_gloss, p_s = window[0]
                 for tokens, score_so_far, past in beams:
-                    combined = score_so_far + self.beta * math.log(p_s + 1e-12)
-                    next_beams.append((tokens + [best_gloss], combined, past))
+                    score = score_so_far + self.beta * math.log(p_s + 1e-12)
+                    next_beams.append((tokens + [best_gloss], score, past))
 
-            # prune
             next_beams.sort(key=lambda x: x[1], reverse=True)
             beams = next_beams[: self.beam_size]
 
