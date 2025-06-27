@@ -2,30 +2,34 @@ import math
 from typing import List, Tuple
 
 import torch
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-)
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from contextlib import suppress
 
 
 class TransformerDecoder:
-    """Decode SignCLIP top-k gloss predictions into a sentence with a causal LM
+    """Beam-search decoder that mixes SignCLIP logits with a causal LM.
+
+    The score for a hypothesis is
+        score = α · log P_LM(token | prefix)  +  β · log P_SignCLIP(token)
+    where log P_LM comes from a Hugging-Face causal model and log P_SignCLIP
+    is the (soft-maxed) similarity of the candidate gloss in its window.
 
     Parameters
     ----------
     lm_name : str
-        Hugging Face model repo or local path.  Default picks a compact 7-B model
-        that fits in 16 GB VRAM with 8-bit weights.
-    beam_size : int, optional
-        Number of active hypotheses, by default 5.
-    alpha : float, optional
-        Weight for LM log-probabilities, by default 0.7.
-    beta : float, optional
-        Weight for SignCLIP log-probabilities, by default 0.3.
-    device : str | None, optional
-        "cuda", "cpu", or None for auto.  If a CUDA device is available the
-        model is loaded there with 8-bit quantisation via *bitsandbytes*.
+        Hugging-Face repo or local path.  Defaults to a 7-B instruct model
+        but any causal LM works (Gemma-2B-it, Phi-2, etc.).
+    beam_size : int
+        Number of parallel hypotheses (default 5).
+    alpha : float
+        Weight for the LM terms.
+    beta : float
+        Weight for SignCLIP terms.
+    device : str | None
+        "cuda" / "cpu" / None → auto.  If CUDA + bitsandbytes are present we
+        attempt 8-bit loading; otherwise fall back to fp16 (GPU) or fp32 (CPU).
+    load_in_8bit : bool
+        Force or forbid 8-bit.  If None (default) we choose automatically.
     """
 
     def __init__(
@@ -35,78 +39,93 @@ class TransformerDecoder:
         alpha: float = 0.7,
         beta: float = 0.3,
         device: str | None = None,
+        load_in_8bit: bool | None = None,
     ) -> None:
         self.alpha = alpha
         self.beta = beta
         self.beam_size = beam_size
 
-        # ------------------------- device & quant --------------------------- #
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-        if self.device == "cuda":
-            # 8‑bit quantisation ⇒  ~14 GB for 7‑B params → fits in 16 GB VRAM.
-            bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
+        if load_in_8bit:
+            try:
+                bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    lm_name,
+                    device_map="auto",
+                    quantization_config=bnb_cfg,
+                    trust_remote_code=True,
+                )
+            except Exception as e:  # pylint: disable=broad-except
+                print(f"⚠️  8-bit load failed ({e.__class__.__name__}: {e}). Falling back to fp16/fp32.")
+                quant_ok = False
+
+        if not quant_ok:
+            dtype = torch.float16 if self.device == "cuda" else torch.float32
             self.model = AutoModelForCausalLM.from_pretrained(
                 lm_name,
-                device_map="auto",
-                quantization_config=bnb_cfg,
-                trust_remote_code=True,
-            )
-        else:
-            # CPU fallback (can still be quantised if you prefer GGUF/4‑bit)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                lm_name,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                torch_dtype=dtype,
                 device_map={"": self.device},
                 trust_remote_code=True,
             )
+
         self.model.eval()
         self.tokenizer = AutoTokenizer.from_pretrained(lm_name)
+        # ensure pad & bos tokens exist
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.tokenizer.bos_token is None and hasattr(self.tokenizer, "bos_token_id"):
+            self.tokenizer.bos_token = self.tokenizer.eos_token
 
-    # --------------------------------------------------------------------- #
     @torch.no_grad()
-    def _lm_logprobs(
-        self, prefix_ids: torch.LongTensor, past_key_values=None
-    ) -> Tuple[torch.Tensor, tuple]:
-        """Return log‑probs over vocab for next token and updated cache."""
-        out = self.model(input_ids=prefix_ids, past_key_values=past_key_values)
-        logits = out.logits[:, -1, :]  # (B, |V|)
+    def _lm_logprobs(self, prefix_ids: torch.LongTensor, past=None):
+        """Return log-probs over vocab for the next token plus new cache."""
+        out = self.model(input_ids=prefix_ids, past_key_values=past)
+        logits = out.logits[:, -1, :]
         return torch.log_softmax(logits, dim=-1), out.past_key_values
 
-    # --------------------------------------------------------------------- #
-    def decode(
-        self, candidate_lists: List[List[Tuple[str, float]]]
-    ) -> str:  # noqa: D401
-        """Beam‑search through windows of gloss candidates.
+    def decode(self, candidate_lists: List[List[Tuple[str, float]]]) -> str:  # noqa: D401
+        """Decode a list of SignCLIP windows.
 
-        Each *candidate_lists[t]* is a list of (gloss, softmax_prob_from_signclip)
-        sorted by probability.  Returns the best sentence string.
+        Each *candidate_lists[t]* is sorted by SignCLIP prob and contains
+        (gloss, prob).  Returns the best sentence string.
         """
 
-        # beams: (tokens, score, past_key_values)
-        beams = [([], 0.0, None)]
+        # beams: (token_list, score, past_key_values)
+        bos_id = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
+        beams: list[tuple[list[str], float, tuple | None]] = [([], 0.0, None)]
 
-        for window in candidate_lists:
-            next_beams: list[tuple[list[str], float, tuple]] = []
+        for window_idx, window in enumerate(candidate_lists):
+            next_beams: list[tuple[list[str], float, tuple | None]] = []
 
             for tokens, score_so_far, past in beams:
-                # Encode current prefix once for this beam
-                prefix_text = " ".join(tokens) if tokens else ""
-                prefix_ids = self.tokenizer(prefix_text, return_tensors="pt", add_special_tokens=False).input_ids.to(self.model.device)
+                # building prefix ids
+                if tokens:
+                    prefix_text = " ".join(tokens)
+                    prefix_ids = self.tokenizer(prefix_text, return_tensors="pt", add_special_tokens=False).input_ids.to(self.model.device)
+                else:  # first step: feed BOS only
+                    prefix_ids = torch.tensor([[bos_id]], device=self.model.device)
 
                 lm_logp, past_next = self._lm_logprobs(prefix_ids, past)
 
                 for gloss, p_s in window:
+                    # allow multi‑token glosses: use first sub‑token for LM score
                     tid_list = self.tokenizer.encode(gloss, add_special_tokens=False)
-                    if len(tid_list) != 1:
-                        continue  # skip multi‑subword glosses
+                    if not tid_list:
+                        continue  # empty after tokenisation
                     tid = tid_list[0]
                     logp_lm = lm_logp[0, tid].item()
 
-                    new_score = score_so_far + self.alpha * logp_lm + self.beta * math.log(p_s + 1e-9)
-                    next_beams.append((tokens + [gloss], new_score, past_next))
+                    combined = score_so_far + self.alpha * logp_lm + self.beta * math.log(p_s + 1e-12)
+                    next_beams.append((tokens + [gloss], combined, past_next))
+
+            # sanity: if no valid continuations
+            if not next_beams:
+                # fallback: choose top‑signclip gloss from this window for all beams
+                best_gloss, p_s = window[0]
+                for tokens, score_so_far, past in beams:
+                    combined = score_so_far + self.beta * math.log(p_s + 1e-12)
+                    next_beams.append((tokens + [best_gloss], combined, past))
 
             # prune
             next_beams.sort(key=lambda x: x[1], reverse=True)
@@ -115,17 +134,17 @@ class TransformerDecoder:
         best_tokens, _, _ = beams[0]
         return self._post_process(best_tokens)
 
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _post_process(tokens: List[str]) -> str:
-        """Simple cleanup: remove consecutive repeats and capitalise.«"""  # noqa: D400
-        deduped = []
+        """Remove immediate repeats, capitalise, append period."""
+        result: list[str] = []
         for tok in tokens:
-            if not deduped or tok != deduped[-1]:
-                deduped.append(tok)
-        sentence = " ".join(deduped)
-        return sentence.capitalize() + "."
+            if not result or tok != result[-1]:
+                result.append(tok)
+        sent = " ".join(result).strip()
+        if not sent.endswith("."):
+            sent += "."
+        return sent.capitalize()
 
 
 __all__ = ["TransformerDecoder"]
-
