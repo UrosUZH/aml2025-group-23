@@ -45,6 +45,11 @@ class TransformerDecoder:
         self.beta = beta
         self.beam_size = beam_size
 
+        self.max_memory = {
+            0: "12GB", 
+            "cpu": "32GB"
+        }
+
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         quant_ok = load_in_8bit
 
@@ -54,8 +59,12 @@ class TransformerDecoder:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     lm_name,
                     device_map="auto",
+                    max_memory=self.max_memory,
                     quantization_config=bnb_cfg,
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
                     trust_remote_code=True,
+                    offload_folder="offload",
+                    offload_state_dict=True,
                 )
             except Exception as e:  # pylint: disable=broad-except
                 print(f"⚠️  8-bit load failed ({e.__class__.__name__}: {e}). Falling back to fp16/fp32.")

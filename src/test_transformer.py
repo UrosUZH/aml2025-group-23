@@ -10,11 +10,12 @@ from Transformer import TransformerDecoder
 # ---------------------------------------------------------------------
 # 1) Instantiate the decoder with a tiny model so the test is lightweight
 decoder = TransformerDecoder(
-        lm_name="distilgpt2",   # 124 M params; loads almost instantly
-        beam_size=10,
-        alpha=0.6,              # LM weight
-        beta=0.4,               # SignCLIP weight
+        # lm_name="distilgpt2",   # 124 M params; loads almost instantly
+        beam_size=4,
+        alpha=0.8,              # LM weight
+        beta=0.2,               # SignCLIP weight
         device="cuda",           # keep test fully CPU-only
+        load_in_8bit=True
 )
 
 # ---------------------------------------------------------------------
@@ -39,7 +40,7 @@ candidate_lists = [
 
     # window-3  → “… is …”
     [("is", 0.40), ("be", 0.18), ("equals", 0.14), ("are", 0.10),
-     ("was", 0.06), ("’s", 0.04), ("been", 0.03), ("exists", 0.02),
+     ("was", 0.06), ("'s", 0.04), ("been", 0.03), ("exists", 0.02),
      ("lies", 0.02), ("remains", 0.01)],
 
     # window-4  → “… John …”
