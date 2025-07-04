@@ -1,1 +1,11 @@
 src/__pycache__/
+test.py
+src/vocab_embed
+# Ignore everything under mock_videos/
+mock_videos/*
+
+# Except files directly inside mock_videos/
+!mock_videos/*.*
+
+# You can also optionally ensure hidden files are included
+!mock_videos/.*

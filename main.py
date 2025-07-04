@@ -56,7 +56,7 @@ def run_mock_evaluation():
     ],
     labels=["Reference", "Shuffled", "Noisy 30%", "Noisy 50%", "Noisy 90%"],
     use_bert=False,
-    use_cosine=False
+    use_cosine=True
 )
     save_to_csv(results, header, output_path="mock_sentences/evaluation_results.csv")
   
