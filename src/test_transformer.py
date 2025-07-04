@@ -7,20 +7,14 @@ Expected output (approx.):
 
 from Transformer import TransformerDecoder
 
-# ---------------------------------------------------------------------
-# 1) Instantiate the decoder with a tiny model so the test is lightweight
-decoder = TransformerDecoder(
-        # lm_name="distilgpt2",   # 124 M params; loads almost instantly
-        beam_size=4,
-        alpha=0.8,              # LM weight
-        beta=0.2,               # SignCLIP weight
-        device="cuda",           # keep test fully CPU-only
-        load_in_8bit=True
-)
-
-# ---------------------------------------------------------------------
-# 2) Fake SignCLIP top-10 output for five overlapping windows
-#    Each inner list is already soft-maxed and sorted (probabilities sum to 1).
+# decoder = TransformerDecoder(
+#         # lm_name="distilgpt2",
+#         beam_size=4,
+#         alpha=0.8,
+#         beta=0.2,
+#         device="cuda",
+#         load_in_8bit=True
+# )
 
 candidate_lists = [
     # window-0  → “Hello …”
@@ -74,7 +68,21 @@ candidate_lists = [
      ("calzone", 0.02), ("lasagna", 0.01)],
 ]
 
-# ---------------------------------------------------------------------
-# 3) Decode and print the sentence
-sentence = decoder.decode(candidate_lists)
-print(sentence)
+# sentence = decoder.decode(candidate_lists)
+# print(sentence)
+
+decoder = TransformerDecoder(
+    beam_size=4,
+    alpha=0.8,
+    beta=0.2,
+    device="cuda",
+    load_in_8bit=True
+)
+
+modes = ["default", "length_norm", "coverage", "uncertainty"]
+
+for mode in modes:
+    decoder.scoring_mode = mode
+    sentence = decoder.decode(candidate_lists)
+    print(f"Mode: {mode}\n→ {sentence}\n")
+
