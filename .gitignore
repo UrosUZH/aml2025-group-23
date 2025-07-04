@@ -9,3 +9,5 @@ mock_videos/*
 
 # You can also optionally ensure hidden files are included
 !mock_videos/.*
+val_rgb_front_clips.zip
+val_rgb_front_clips/

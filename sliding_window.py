@@ -263,12 +263,15 @@ if __name__ == "__main__":
     
     vid_dir = Path("aml/mock_videos/3xni-I6N3EY_2-1-rgb_front")
     vid_dir = Path("aml/mock_videos/C4lsh3mZ4jU_9_10-5-rgb_front")
+    vid_dir = Path("aml/mock_videos/279MO2nwC_E_4-2-rgb_front")
     pose_file = vid_dir.with_suffix(".pose")
     video_file = vid_dir.with_suffix(".mp4")
-   
+    # window size = Frames
     window_size = 64
     stride = 64
     output_dir = Path(f"{vid_dir}_W{window_size}_S{stride}") 
+    do_vid_segment = False
+    
     embed_pose_sliding_windows(
         pose_path=pose_file,
         output_dir=output_dir,
@@ -285,13 +288,16 @@ if __name__ == "__main__":
     )
     # Score and save results
     slice_dir = output_dir
+    
+    
+       
     vocab_embed_dir = Path("aml/src/vocab_embed")
     if slice_dir.exists():
         print(f"⚠️ Slice directory {slice_dir} exist.")
     score_pose_slices(
         slice_dir=slice_dir,
         vocab_embed_dir=vocab_embed_dir,
-        k=5
+        k=10
     )
     
     print_top1_predictions_with_sentences(

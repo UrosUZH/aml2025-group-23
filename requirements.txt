@@ -4,4 +4,6 @@ bert_score
 hf_xet
 sentence-transformers
 tqdm
-pickle5
+
+av
+gdown
