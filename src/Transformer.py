@@ -102,7 +102,7 @@ class TransformerDecoder:
 
         if quant_ok:
             try:
-                bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
+                bnb_cfg = BitsAndBytesConfig(load_in_8bit=True, llm_int8_enable_fp32_cpu_offload=True)
                 self.model = AutoModelForCausalLM.from_pretrained(
                     lm_name,
                     device_map="auto",
@@ -135,6 +135,25 @@ class TransformerDecoder:
 
     @torch.no_grad()
     def _lm_logprobs(self, prefix_ids: torch.LongTensor, past=None):
+        """
+        Compute log-probabilities and entropy of the next token given a prefix.
+
+        Parameters
+        ----------
+        prefix_ids : torch.LongTensor
+            Token IDs of the prefix input sequence.
+        past : optional
+            Cached past key values for faster decoding (not used currently).
+
+        Returns
+        -------
+        log_probs : torch.FloatTensor
+            Log-probabilities for the next token over the vocabulary.
+        past_key_values : tuple
+            Cached past key values for future use.
+        entropy : float
+            Entropy of the predicted next-token distribution.
+        """
         out = self.model(input_ids=prefix_ids, past_key_values=past)
         logits = out.logits[:, -1, :]
         log_probs = torch.log_softmax(logits, dim=-1)
@@ -142,41 +161,102 @@ class TransformerDecoder:
         return log_probs, out.past_key_values, entropy
 
     @torch.no_grad()
-    def _full_gloss_logprob(self, gloss: str, past) -> Tuple[float, tuple, float]:
-        toks = self.tokenizer.encode(" " + gloss, add_special_tokens=False)
-        total_lp = 0.0
-        entropies = []
-        for tid in toks:
-            input_ids = torch.tensor([[tid]], device=self.device)
-            lp, past, entropy = self._lm_logprobs(input_ids, past)
-            total_lp += lp[0, tid].item()
-            entropies.append(entropy)
-        avg_entropy = sum(entropies) / len(entropies) if entropies else 0.0
-        return total_lp, past, avg_entropy
+    def _full_gloss_logprob(self, gloss: str, prefix_tokens: List[str]) -> Tuple[float, float]:
+        """
+        Compute average log-probability and entropy for a gloss continuation.
+
+        Parameters
+        ----------
+        gloss : str
+            Candidate gloss to evaluate.
+        prefix_tokens : List[str]
+            Current token sequence as text tokens.
+
+        Returns
+        -------
+        avg_lp : float
+            Average log-probability of the gloss conditioned on the prefix.
+        avg_entropy : float
+            Average entropy over the gloss tokens.
+        """
+        # Build text strings
+        prefix_text = " ".join(prefix_tokens)
+        full_text = prefix_text + " " + gloss if prefix_text else gloss
+
+        # Tokenize both
+        prefix_ids = self.tokenizer.encode(prefix_text, return_tensors="pt").to(self.device)
+        full_ids = self.tokenizer.encode(full_text, return_tensors="pt").to(self.device)
+
+        # Forward full sequence
+        outputs = self.model(full_ids)
+        logits = outputs.logits[:, :-1, :]
+        log_probs = torch.log_softmax(logits, dim=-1)
+        
+        gloss_start = prefix_ids.shape[1]
+        new_token_ids = full_ids[0][gloss_start:]
+
+        logp = 0.0
+        entropy_sum = 0.0
+
+        start_pos = prefix_ids.shape[1] - 1
+        if start_pos < 0:
+            start_pos = 0
+
+        for i, tid in enumerate(new_token_ids):
+            pos = start_pos + i
+            if pos >= log_probs.shape[1]:
+                break
+            lp = log_probs[0, pos, tid].item()
+            logp += lp
+
+            token_log_probs = log_probs[0, pos, :]
+            token_entropy = -(token_log_probs.exp() * token_log_probs).sum().item()
+            entropy_sum += token_entropy
+
+        avg_lp = logp / len(new_token_ids) if len(new_token_ids) > 0 else float('-inf')
+        avg_entropy = entropy_sum / len(new_token_ids) if len(new_token_ids) > 0 else 0.0
+
+        return avg_lp, avg_entropy
+
 
     def decode(self, candidate_lists: List[List[Tuple[str, float]]]) -> str:
+        """
+        Perform beam search to decode the most fluent and relevant sentence 
+        from a list of candidate glosses at each time step.
+
+        Parameters
+        ----------
+        candidate_lists : List[List[Tuple[str, float]]]
+            A list of gloss candidates for each decoding step.
+            Each inner list contains (gloss, SignCLIP_score) tuples.
+
+        Returns
+        -------
+        str
+            The final decoded and optionally refined sentence.
+        """
         bos_id = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
-        beams: list[tuple[list[str], float, tuple | None, int]] = [([], 0.0, None, 0)]
+        beams: list[tuple[list[str], float, int]] = [([], 0.0, 0)]
 
         for window_idx, window in enumerate(candidate_lists):
-            next_beams: list[tuple[list[str], float, tuple | None, int]] = []
+            next_beams: list[tuple[list[str], float, int]] = []
 
             if self.debug:
                 print(f"\n=== Window {window_idx} ===")
 
-            for tokens, score_so_far, past, cov in beams:
+            for tokens, score_so_far, cov in beams:
                 # encode current prefix once
                 prefix_ids = (
                     self.tokenizer(" ".join(tokens), return_tensors="pt",
                                     add_special_tokens=False).input_ids.to(self.device)
                     if tokens else torch.tensor([[bos_id]], device=self.device)
                 )
-                lm_next, past_next, _ = self._lm_logprobs(prefix_ids, past)
+                lm_next, _, _ = self._lm_logprobs(prefix_ids)
 
                 # 1) SignCLIP glosses
                 for gloss, p_s in window:
                     new_beam = self._extend_beam(gloss, p_s, tokens, score_so_far,
-                                past_next, lm_next, cov)
+                                lm_next, cov)
                     if new_beam:
                         next_beams.append(new_beam)
 
@@ -188,7 +268,7 @@ class TransformerDecoder:
                         if not token_str or token_str == self.tokenizer.eos_token:
                             continue
                         new_beam = self._extend_beam(token_str, 1.0, tokens, score_so_far,
-                                          past_next, lm_next, cov,
+                                          lm_next, cov,
                                           subtoken_tid=tid)
                         if new_beam:
                             next_beams.append(new_beam)
@@ -196,9 +276,9 @@ class TransformerDecoder:
             # fallback & prune
             if not next_beams:
                 best_gloss, p_s = window[0]
-                for tokens, score_so_far, past, coverage_count in beams:
+                for tokens, score_so_far, coverage_count in beams:
                     score = score_so_far + self.beta * math.log(p_s + 1e-12)
-                    next_beams.append((tokens + [best_gloss], score, past, coverage_count + 1))
+                    next_beams.append((tokens + [best_gloss], score, coverage_count + 1))
                     
             next_beams.sort(key=lambda x: x[1], reverse=True)
 
@@ -221,14 +301,13 @@ class TransformerDecoder:
         return self._refine_sentence(draft) if self.refine else draft
 
     def _extend_beam(self, gloss, p_s, tokens, score_so_far,
-                 past_next, lm_next, coverage_count, *, subtoken_tid=None) -> tuple:
+                 lm_next, coverage_count, *, subtoken_tid=None) -> tuple:
         # LM score (if subtoken_tid provided use cached lm_next)
         if subtoken_tid is not None:
             logp_lm = lm_next[0, subtoken_tid].item()
             entropy = -(lm_next.exp() * lm_next).sum(dim=-1).item()
-            past_out = past_next
         else:
-            logp_lm, past_out, entropy = self._full_gloss_logprob(gloss, past_next)
+            logp_lm, entropy = self._full_gloss_logprob(gloss, tokens)
 
         # Threshold: skip if LLM doesn't like this gloss
         if logp_lm < self.min_logp_lm_threshold:
@@ -251,12 +330,26 @@ class TransformerDecoder:
         elif self.scoring_mode == "uncertainty":
             new_score -= self.ent_lambda * entropy
 
-        return (tokens + [gloss], new_score, past_out, coverage_count+1)
+        return (tokens + [gloss], new_score, coverage_count+1)
 
     def _refine_sentence(self, draft: str) -> str:
+        """
+        Optionally post-process the draft sentence using the language model 
+        to make it more fluent or grammatically correct.
+
+        Parameters
+        ----------
+        draft : str
+            The raw output sequence from beam search.
+
+        Returns
+        -------
+        str
+            The refined sentence, if generation succeeded; otherwise the original draft.
+        """
         if self.debug:
             print(f"\nDraft before refinement: '{draft}'")
-        prompt = f"Rewrite this sentence so it is fluent English but keep the meaning. Just write the refined sentence:\n\"{draft}\""
+        prompt = f"What does this sentence mean? Can you write this sentence in a way that it makes sense? Just write the sentence:\n\"{draft}\""
         inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
         input_ids = inputs.input_ids.to(self.device)
         attention_mask = inputs.attention_mask.to(self.device)
@@ -275,6 +368,24 @@ class TransformerDecoder:
     
     @staticmethod
     def _post_process(tokens: List[str]) -> str:
+        """
+        Convert a list of tokens into a well-formed sentence.
+
+        - Removes consecutive duplicate tokens.
+        - Joins tokens into a string.
+        - Adds terminal punctuation if missing.
+        - Capitalizes the first letter.
+
+        Parameters
+        ----------
+        tokens : List[str]
+            Token sequence to process.
+
+        Returns
+        -------
+        str
+            A cleaned-up sentence.
+        """
         result: list[str] = []
         for tok in tokens:
             if not result or tok != result[-1]:
