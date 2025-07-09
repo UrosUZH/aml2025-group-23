@@ -40,6 +40,20 @@ class TransformerDecoder:
             Weight for coverage adjustment (default 0.1).
         ent_lambda : float
             Weight for uncertainty adjustment (default 0.05).
+        open_set_k : int
+            If > 0, the LM will also generate open-set tokens (top-k logits).
+            This is useful for models that can generate tokens not in the
+            SignCLIP vocabulary, e.g., "mistralai/Mistral-7B-Instruct-v0.2".
+            If 0 (default), only SignCLIP glosses are used.
+        min_logp_lm_threshold : float
+            Minimum log probability for a token to be considered by the LM.
+            If the LM's log probability is below this threshold, the token is
+            not extended in the beam search. This helps to filter out unlikely
+            tokens and avoid noise in the generated sentences.
+        refine : bool
+            If True (default), the final sentence is rewritten by the LM for fluency.
+        debug : bool
+            If True, prints debug information about the beam search process.
 
         Notes
         -----
@@ -61,6 +75,10 @@ class TransformerDecoder:
         len_gamma: float = 0.7,
         coverage_lambda: float = 0.1,
         ent_lambda: float = 0.05,
+        open_set_k: int = 0,
+        min_logp_lm_threshold: float = -40.0,
+        refine: bool = True,
+        debug: bool = False,
     ) -> None:
         self.alpha = alpha
         self.beta = beta
@@ -69,6 +87,10 @@ class TransformerDecoder:
         self.len_gamma = len_gamma
         self.coverage_lambda = coverage_lambda
         self.ent_lambda = ent_lambda
+        self.open_set_k = open_set_k
+        self.refine = refine
+        self.debug = debug
+        self.min_logp_lm_threshold = min_logp_lm_threshold
 
         self.max_memory = {
             0: "12GB",
@@ -126,9 +148,9 @@ class TransformerDecoder:
         entropies = []
         for tid in toks:
             input_ids = torch.tensor([[tid]], device=self.device)
-            lp, past = self._lm_logprobs(input_ids, past)
+            lp, past, entropy = self._lm_logprobs(input_ids, past)
             total_lp += lp[0, tid].item()
-            entropies.append(-(lp.exp() * lp).sum(dim=-1).item())
+            entropies.append(entropy)
         avg_entropy = sum(entropies) / len(entropies) if entropies else 0.0
         return total_lp, past, avg_entropy
 
@@ -136,54 +158,121 @@ class TransformerDecoder:
         bos_id = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
         beams: list[tuple[list[str], float, tuple | None, int]] = [([], 0.0, None, 0)]
 
-        for window in candidate_lists:
-            next_beams: list[tuple[list[str], float, tuple | None, float]] = []
+        for window_idx, window in enumerate(candidate_lists):
+            next_beams: list[tuple[list[str], float, tuple | None, int]] = []
 
-            for tokens, score_so_far, past, coverage_count in beams:
-                if tokens:
-                    prefix_text = " ".join(tokens)
-                    prefix_ids = self.tokenizer(prefix_text, return_tensors="pt", add_special_tokens=False).input_ids.to(self.device)
-                else:
-                    prefix_ids = torch.tensor([[bos_id]], device=self.device)
+            if self.debug:
+                print(f"\n=== Window {window_idx} ===")
 
-                _, past_next, _ = self._lm_logprobs(prefix_ids, past)
+            for tokens, score_so_far, past, cov in beams:
+                # encode current prefix once
+                prefix_ids = (
+                    self.tokenizer(" ".join(tokens), return_tensors="pt",
+                                    add_special_tokens=False).input_ids.to(self.device)
+                    if tokens else torch.tensor([[bos_id]], device=self.device)
+                )
+                lm_next, past_next, _ = self._lm_logprobs(prefix_ids, past)
 
+                # 1) SignCLIP glosses
                 for gloss, p_s in window:
-                    if not gloss.strip():
-                        continue
-                    try:
-                        logp_lm, past_out, entropy = self._full_gloss_logprob(gloss, past_next)
-                    except Exception:
-                        continue
+                    new_beam = self._extend_beam(gloss, p_s, tokens, score_so_far,
+                                past_next, lm_next, cov)
+                    if new_beam:
+                        next_beams.append(new_beam)
 
-                    base_score = self.alpha * logp_lm + self.beta * math.log(p_s + 1e-12)
-                    new_score = score_so_far + base_score
+                # 2) Open-set LM tokens (optional)
+                if self.open_set_k > 0:
+                    topk_logits = torch.topk(lm_next, self.open_set_k, dim=-1)
+                    for tid in topk_logits.indices[0].tolist():
+                        token_str = self.tokenizer.decode([tid]).strip()
+                        if not token_str or token_str == self.tokenizer.eos_token:
+                            continue
+                        new_beam = self._extend_beam(token_str, 1.0, tokens, score_so_far,
+                                          past_next, lm_next, cov,
+                                          subtoken_tid=tid)
+                        if new_beam:
+                            next_beams.append(new_beam)
 
-                    # Different scoring adjustments
-                    if self.scoring_mode == "length_norm":
-                        length_penalty = (len(tokens) + 1) ** self.len_gamma
-                        adjusted_score = new_score / length_penalty
-                    elif self.scoring_mode == "coverage":
-                        adjusted_score = new_score + self.coverage_lambda * (coverage_count + 1)
-                    elif self.scoring_mode == "uncertainty":
-                        adjusted_score = new_score - self.ent_lambda * entropy
-                    else:
-                        adjusted_score = new_score
-
-                    next_beams.append((tokens + [gloss], adjusted_score, past_out, coverage_count + 1))
-
+            # fallback & prune
             if not next_beams:
                 best_gloss, p_s = window[0]
                 for tokens, score_so_far, past, coverage_count in beams:
                     score = score_so_far + self.beta * math.log(p_s + 1e-12)
                     next_beams.append((tokens + [best_gloss], score, past, coverage_count + 1))
-
+                    
             next_beams.sort(key=lambda x: x[1], reverse=True)
+
+            if self.debug:
+                print(f"Window {window_idx} - {len(next_beams)} candidates:")
+                print(f"Showing top {self.beam_size} beams:")
+                for b in next_beams[:self.beam_size]:
+                    print(f"  Beam: {' '.join(b[0])}, Score: {b[1]:.2f}")
+
             beams = next_beams[: self.beam_size]
 
-        best_tokens, _, _, _ = beams[0]
-        return self._post_process(best_tokens)
+        best_tokens = beams[0][0]
 
+        if self.debug:
+            print("\n=== Top 5 Beams ===")
+            for b in beams[:5]:
+                print(f"  Beam: {' '.join(b[0])}, Score: {b[1]:.2f}")
+
+        draft = self._post_process(best_tokens)
+        return self._refine_sentence(draft) if self.refine else draft
+
+    def _extend_beam(self, gloss, p_s, tokens, score_so_far,
+                 past_next, lm_next, coverage_count, *, subtoken_tid=None) -> tuple:
+        # LM score (if subtoken_tid provided use cached lm_next)
+        if subtoken_tid is not None:
+            logp_lm = lm_next[0, subtoken_tid].item()
+            entropy = -(lm_next.exp() * lm_next).sum(dim=-1).item()
+            past_out = past_next
+        else:
+            logp_lm, past_out, entropy = self._full_gloss_logprob(gloss, past_next)
+
+        # Threshold: skip if LLM doesn't like this gloss
+        if logp_lm < self.min_logp_lm_threshold:
+            if self.debug:
+                print(f"Skipping gloss '{gloss}' due to low logp_lm ({logp_lm:.2f})")
+            return None
+
+        base = self.alpha * logp_lm + self.beta * math.log(p_s + 1e-12)
+        new_score = score_so_far + base
+
+        if self.debug:
+            print(f"Beam extension for gloss '{gloss}':")
+            print(f"    Gloss: {gloss}, p_s: {p_s:.2f}, logp_lm: {logp_lm:.2f}, base: {base:.2f}, new: {new_score:.2f}")
+
+        # scoring-mode tweaks
+        if self.scoring_mode == "length_norm":
+            new_score /= (len(tokens)+1) ** self.len_gamma
+        elif self.scoring_mode == "coverage":
+            new_score += self.coverage_lambda * (coverage_count+1)
+        elif self.scoring_mode == "uncertainty":
+            new_score -= self.ent_lambda * entropy
+
+        return (tokens + [gloss], new_score, past_out, coverage_count+1)
+
+    def _refine_sentence(self, draft: str) -> str:
+        if self.debug:
+            print(f"\nDraft before refinement: '{draft}'")
+        prompt = f"Rewrite this sentence so it is fluent English but keep the meaning. Just write the refined sentence:\n\"{draft}\""
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True)
+        input_ids = inputs.input_ids.to(self.device)
+        attention_mask = inputs.attention_mask.to(self.device)
+        gen = self.model.generate(
+            input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=100,
+            do_sample=False,
+            num_beams=1,
+            eos_token_id=self.tokenizer.eos_token_id
+        )
+        rewritten = self.tokenizer.decode(gen[0][input_ids.size(1):],
+                                          skip_special_tokens=True).strip()
+        # Sometimes model returns empty / identical:
+        return rewritten if rewritten else draft
+    
     @staticmethod
     def _post_process(tokens: List[str]) -> str:
         result: list[str] = []
@@ -194,6 +283,5 @@ class TransformerDecoder:
         if not sent.endswith("."):
             sent += "."
         return sent.capitalize()
-
 
 __all__ = ["TransformerDecoder"]

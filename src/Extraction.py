@@ -291,12 +291,14 @@ def embed_text(text, model_name='default'):
 #         print(score_pose_and_text_batch(pose_l, text_l, model_name='asl_finetune'))
 '''
 
-def get_vocab(vocab_filename = '/home/signclip/fairseq/examples/MMPT/aml/src/vocab.txt'):
+def get_vocab(vocab_filename='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_new.txt', tag_prompt="<en> <ase>"):
     print(f"Loading vocab - Start: {datetime.datetime.now()}")
     with open(vocab_filename, 'r') as f:
-        vocab = [i.strip() for i in f.readlines()]
-        print(f"Loading vocab - Ended: {datetime.datetime.now()}")
-        return vocab
+        raw_vocab = [i.strip() for i in f.readlines()]
+        # Add tag prompt
+        vocab = [f"{tag_prompt} {word}" for word in raw_vocab]
+    print(f"Loading vocab - Ended: {datetime.datetime.now()}")
+    return vocab
 
 def store_embeddings(embeddings, filename):
     print(f"Storing vocab embeddings - Start: {datetime.datetime.now()}")
@@ -316,7 +318,7 @@ def create_vocab_embeddings():
 
     embeddings = []
     for word in tqdm(vocab_words):
-        embeddings.append(embed_text(word))
+        embeddings.append(embed_text(word, model_name='asl_finetune'))
 
     vocab_save_path =  '/home/signclip/fairseq/examples/MMPT/aml/src/vocab_embed'
     store_embeddings(embeddings, vocab_save_path)

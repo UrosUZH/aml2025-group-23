@@ -1,10 +1,3 @@
-"""
-Quick functional test for src/Transformer.py
-
-Expected output (approx.):
-    >>> Hello my name is john.
-"""
-
 from Transformer import TransformerDecoder
 
 # decoder = TransformerDecoder(
@@ -17,66 +10,50 @@ from Transformer import TransformerDecoder
 # )
 
 candidate_lists = [
-    # window-0  → “Hello …”
-    [("hello", 0.30), ("hi", 0.18), ("hey", 0.12), ("greetings", 0.10),
-     ("hola", 0.08), ("hullo", 0.06), ("salut", 0.05), ("ciao", 0.04),
-     ("bonjour", 0.04), ("yo", 0.03)],
+    [("HELLO", 0.22), ("HI", 0.21), ("HEY", 0.18), ("LAPTOP", 0.14), ("SUP", 0.10),
+     ("GREETING", 0.06), ("GOOD-MORNING", 0.04), ("HEY-THERE", 0.03), ("LOUD", 0.01), ("LOUDLY", 0.01)],
 
-    # window-1  → “… my …”
-    [("my", 0.35), ("our", 0.20), ("the", 0.12), ("your", 0.09),
-     ("ma", 0.07), ("mi", 0.05), ("mein", 0.04), ("mes", 0.03),
-     ("mon", 0.03), ("mine", 0.02)],
+    [("MY", 0.28), ("YOUR", 0.23), ("OUR", 0.15), ("THEIR", 0.12), ("WHO", 0.08),
+     ("HER", 0.06), ("ITS", 0.04), ("IT", 0.02), ("THEM", 0.01), ("EVERYONE", 0.01)],
 
-    # window-2  → “… name …”
-    [("name", 0.38), ("title", 0.18), ("label", 0.14), ("nom", 0.08),
-     ("navn", 0.06), ("nombre", 0.05), ("naam", 0.04), ("designation", 0.03),
-     ("denomination", 0.02), ("appelation", 0.02)],
+    [("TITLE", 0.30), ("NAME", 0.25), ("LABEL", 0.15), ("FAME", 0.10), ("CALL", 0.08),
+     ("SIGN", 0.05), ("WORD", 0.03), ("NOISE", 0.02), ("THING", 0.01), ("LIGHT", 0.01)],
 
-    # window-3  → “… is …”
-    [("is", 0.40), ("be", 0.18), ("equals", 0.14), ("are", 0.10),
-     ("was", 0.06), ("'s", 0.04), ("been", 0.03), ("exists", 0.02),
-     ("lies", 0.02), ("remains", 0.01)],
+    [("IS", 0.30), ("BE", 0.25), ("ARE", 0.15), ("EXISTS", 0.12), ("FEELS", 0.08),
+     ("APPEARS", 0.05), ("SOUNDS", 0.03), ("RUNS", 0.01), ("JUMPS", 0.00), ("STANDS", 0.01)],
 
-    # window-4  → “… John …”
-    [("john", 0.42), ("jon", 0.17), ("joe", 0.15), ("johan", 0.08),
-     ("joan", 0.05), ("jan", 0.04), ("juan", 0.03), ("sean", 0.03),
-     ("ian", 0.02), ("johnny", 0.01)],
+    [("JOHN", 0.32), ("JON", 0.25), ("JACK", 0.15), ("DOG", 0.12), ("CAT", 0.08),
+     ("JAMES", 0.04), ("JASON", 0.02), ("JIM", 0.01), ("TREE", 0.00), ("CAR", 0.01)],
 
-    # window-5  → “… and …”
-    [("and", 0.34), ("plus", 0.20), ("as well as", 0.12), ("also", 0.10),
-     ("ampersand", 0.07), ("n", 0.05), ("along", 0.04), ("with", 0.04),
-     ("together", 0.03), ("added", 0.01)],
+    [("AND", 0.28), ("ALSO", 0.23), ("PLUS", 0.15), ("TOO", 0.10), ("LOUD", 0.08),
+     ("LOUDLY", 0.05), ("WITH", 0.04), ("BUT", 0.03), ("OR", 0.02), ("YET", 0.02)],
 
-    # window-6  → “… I …”
-    [("i", 0.36), ("me", 0.22), ("myself", 0.15), ("eye", 0.07),
-     ("aye", 0.06), ("yo", 0.04), ("ich", 0.03), ("ego", 0.03),
-     ("je", 0.02), ("ya", 0.02)],
+    [("MYSELF", 0.26), ("ME", 0.20), ("I", 0.17), ("DOG", 0.12), ("CAT", 0.08),
+     ("SELF", 0.05), ("WHO", 0.04), ("THING", 0.03), ("IT", 0.02), ("NOISE", 0.01)],
 
-    # window-7  → “… really …”
-    [("really", 0.32), ("truly", 0.19), ("very", 0.16), ("indeed", 0.11),
-     ("surely", 0.07), ("certainly", 0.05), ("absolutely", 0.04),
-     ("definitely", 0.03), ("positively", 0.02), ("undoubtedly", 0.01)],
+    [("LOUD", 0.28), ("TRULY", 0.22), ("VERY", 0.18), ("REALLY", 0.12), ("FAR", 0.08),
+     ("DEEPLY", 0.05), ("SINCERELY", 0.03), ("NOISY", 0.02), ("BRIGHT", 0.01), ("SHINY", 0.01)],
 
-    # window-8  → “… like …”
-    [("like", 0.37), ("love", 0.18), ("enjoy", 0.14), ("fancy", 0.10),
-     ("appreciate", 0.06), ("prefer", 0.05), ("dig", 0.04), ("adore", 0.03),
-     ("cherish", 0.02), ("relish", 0.01)],
+    [("LIKE", 0.29), ("LOVE", 0.23), ("LOUD", 0.17), ("ENJOY", 0.12), ("NOISE", 0.07),
+     ("PREFER", 0.04), ("FAVOR", 0.03), ("APPRECIATE", 0.02), ("HATE", 0.02), ("IGNORE", 0.01)],
 
-    # window-9  → “… pizza …”
-    [("pizza", 0.39), ("pasta", 0.16), ("burger", 0.14), ("tacos", 0.10),
-     ("sushi", 0.07), ("sandwich", 0.05), ("pie", 0.04), ("flatbread", 0.03),
-     ("calzone", 0.02), ("lasagna", 0.01)],
+    [("RICE", 0.30), ("BURGER", 0.22), ("TRASH", 0.18), ("SUSHI", 0.12), ("SOUND", 0.07),
+     ("PASTA", 0.04), ("SANDWICH", 0.03), ("TREE", 0.02), ("TABLE", 0.01), ("NOISE", 0.01)],
 ]
+
 
 # sentence = decoder.decode(candidate_lists)
 # print(sentence)
 
 decoder = TransformerDecoder(
+    lm_name="microsoft/Phi-4-mini-instruct",
     beam_size=4,
-    alpha=0.8,
-    beta=0.2,
+    alpha=0.5,
+    beta=0.5,
     device="cuda",
-    load_in_8bit=True
+    load_in_8bit=True,
+    refine=True,
+    debug=True,
 )
 
 modes = ["default", "length_norm", "coverage", "uncertainty"]
@@ -85,4 +62,3 @@ for mode in modes:
     decoder.scoring_mode = mode
     sentence = decoder.decode(candidate_lists)
     print(f"Mode: {mode}\n→ {sentence}\n")
-
