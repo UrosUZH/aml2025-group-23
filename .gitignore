@@ -11,3 +11,14 @@ mock_videos/*
 !mock_videos/.*
 val_rgb_front_clips.zip
 val_rgb_front_clips/
+mock_videos/*
+mock_sentences/*
+src/gloss_vocab_embed
+src/vocab_embed_new
+src/vocab_embed_new2
+put_here.py
+
+signclip_results_vocab_new/
+results_old/
+signclip_results_old/
+__pycache__/
