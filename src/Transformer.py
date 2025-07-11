@@ -93,7 +93,7 @@ class TransformerDecoder:
         self.min_logp_lm_threshold = min_logp_lm_threshold
 
         self.max_memory = {
-            0: "12GB",
+            0: "16GB",
             "cpu": "32GB"
         }
 

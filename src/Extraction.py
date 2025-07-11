@@ -198,7 +198,7 @@ def embed_text(text, model_name='default'):
 
 # ===================================== Pose processing =====================================
 
-
+import mediapipe as mp
 mp_holistic = mp.solutions.holistic
 FACEMESH_CONTOURS_POINTS = [str(p) for p in sorted(
     set(p for p_tup in mp_holistic.FACEMESH_CONTOURS for p in p_tup))]
@@ -357,10 +357,10 @@ def load_vocab_embeddings(vocab_emb_path):
 
 def get_vocab_embeddings(
     # TODO
-    # vocab_words_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab.txt',
-    # vocab_emb_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_embed'
-    vocab_words_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_small.txt',
-    vocab_emb_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_small_embed',
+    vocab_words_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab.txt',
+    vocab_emb_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_embed',
+    # vocab_words_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_small.txt',
+    # vocab_emb_path='/home/signclip/fairseq/examples/MMPT/aml/src/vocab_small_embed',
     tag_prompt="<en> <ase> "
 ):
     with open(vocab_words_path, 'r') as f:

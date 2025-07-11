@@ -412,6 +412,115 @@ def print_top1_predictions_with_sentences(
         print(f"{video_prefix:30s} | {label_1:20s} | {label_2:20s} | {label_3:20s} | {word}")
 
 
+
+def embed_and_score_pose_segments_pipe(
+    pose_path: Path,
+    vocab_embed_path: Path,
+    vocab_text_path: Path,
+    output_csv_path: Path,
+    window_size: int = 64,
+    stride: int = 16,
+    model_name: str = "default",
+    k: int = 5,
+):
+    """
+    Loads a pose file, embeds segments, scores them against vocab embeddings,
+    and saves top-k labels and scores in one CSV.
+    """
+    import pickle
+    import numpy as np
+    import pandas as pd
+    import torch
+    if output_csv_path.exists():
+        print(f"⚠️ Output CSV {output_csv_path} already exists. Skipping creation.")
+        return output_csv_path
+    # Load pose file
+    with pose_path.open("rb") as f:
+        buffer = f.read()
+    print(f"🔍 Loading pose file: {pose_path}")
+    pose = Pose.read(buffer)
+
+    # Preprocess pose frames
+    pose_frames = extraction.preprocess_pose(pose).squeeze(0)  # (num_frames, feature_dim)
+    num_frames, feature_dim = pose_frames.shape
+
+    # Load vocab embeddings + vocab labels
+    with open(vocab_embed_path, 'rb') as f:
+        vocab_embeddings = pickle.load(f)
+    if isinstance(vocab_embeddings, list):
+        vocab_embeddings = np.array(vocab_embeddings).squeeze(1)
+    with open(vocab_text_path, 'r') as f:
+        vocab = [line.strip() for line in f]
+
+    print(f"✅ Vocab loaded: {len(vocab)} entries | Embeddings shape: {vocab_embeddings.shape}")
+
+    # Load model once
+    model_info = extraction.get_model(model_name)
+    model = model_info["model"]
+    caps, cmasks = extraction.preprocess_text("", model_name)
+
+    records = []
+    slice_count = 0
+
+    for start_idx in range(0, max(num_frames - window_size, 0)+1, stride):
+        
+        end_idx = start_idx + window_size
+        slice_frames = pose_frames[start_idx:end_idx, :]
+        # print(f"🔍 Processing slice: {start_idx} to {end_idx} (shape: {slice_frames.shape})")
+        # print(f"🔍 Processing slice: {start_idx} to {end_idx} (shape: {max(num_frames - window_size, 0)+1})")
+        # if slice_frames.shape[0] < window_size:
+        #     continue  # Skip short segments
+
+        slice_tensor = slice_frames.unsqueeze(0)  # (1, window_size, feature_dim)
+
+        # Embed
+        with torch.no_grad():
+            output = model(slice_tensor, caps, cmasks, return_score=False)
+            embedding = output["pooled_video"].cpu().numpy().squeeze(0)  # (embed_dim,)
+
+        # Score against vocab
+        # scores = np.matmul(embedding, vocab_embeddings.T)  # (vocab_size,)
+        # topk_idx = np.argsort(-scores)[:k]
+        # topk_labels = [vocab[i] for i in topk_idx]
+        # topk_scores = [scores[i] for i in topk_idx]
+        
+        
+        scores = np.matmul(embedding, vocab_embeddings.T)  # (vocab_size,)
+        sorted_idx = np.argsort(-scores)  # indices sorted by descending score
+
+        topk_labels = []
+        topk_scores = []
+
+        for idx in sorted_idx:
+            label = vocab[idx]
+            score = scores[idx]
+            if '##' in label:
+                continue 
+            if label not in topk_labels:
+                topk_labels.append(label)
+                topk_scores.append(score)
+            if len(topk_labels) == k:
+                break
+
+        # Store result
+        record = {"slice": f"slice_{start_idx:03d}_{end_idx:03d}.npy"}
+        for rank, (label, score) in enumerate(zip(topk_labels, topk_scores), start=1):
+            record[f"label_{rank}"] = label
+            record[f"score_{rank}"] = score
+        records.append(record)
+        slice_count += 1
+
+    # Final output
+    if slice_count == 0:
+        print("⚠️ No valid slices processed.")
+    else:
+        df = pd.DataFrame(records)
+        df.to_csv(output_csv_path, index=False)
+        print(f"✅ Scored {slice_count} slices → Saved to {output_csv_path}")
+        return output_csv_path
+
+
+
 if __name__ == "__main__":
     # Choose video and pose
     vid_dir = Path("aml/mock_videos/C4lsh3mZ4jU_9_10-5-rgb_front")
