@@ -20,7 +20,7 @@ The easiest way to get started is to use **VSCode** together with the **Dev Cont
 
 - Press `Alt + Shift + P` (or `Cmd + Shift + P` on Mac) to open the command palette.
 
-- Type **"Attach to Container"** and select:
+- Type **"Dev Container: Attach to Container"** and select:
 
 ## How to run
 Once you’re inside the container, do:
