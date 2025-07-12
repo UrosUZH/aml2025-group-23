@@ -33,4 +33,4 @@ if __name__ == "__main__":
         url="https://drive.google.com/uc?id=1qTIXFsu8M55HrCiaGv7vZ7GkdB3ubjaG",
         output_path=zip_output
     )
-    unzip_file(zip_output, extract_to="val_rgb_front_clips")
+    unzip_file(zip_output, extract_to="data/val_rgb_front_clips")
