@@ -2,7 +2,6 @@ src/__pycache__/
 test.py
 # Ignore results folder
 results/
-signclip_results/
 
 # Ignore everything under mock_videos/
 mock_videos/*
