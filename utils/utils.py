@@ -1,55 +1,60 @@
-import numpy as np
 import csv
-
-import json
 import pandas as pd
 import os
 from pathlib import Path
 import numpy as np
-import torch
-import numpy as np
-import pandas as pd
-from pose_format import Pose
 import sys
-sys.path.insert(1, '/home/signclip/fairseq/examples/MMPT')
-os.chdir('/home/signclip/fairseq/examples/MMPT')
+from nltk.translate.bleu_score import sentence_bleu
+from rouge_score import rouge_scorer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from pathlib import Path
+from typing import Union
+import re
 
-# If your functions are in another file, adjust the import accordingly
-# from your_module import embed_pose, preprocess_pose
-import pickle
-import av
-import json
-import pandas as pd
-import unicodedata
+# Fixing import paths for MMPT
+sys.path.insert(0, '/home/signclip/fairseq/examples/MMPT/aml')
 
-from src.Transformer import TransformerDecoder
+from src.Evaluation import evaluate
 
-def softmax(x):
+def softmax(x: np.ndarray) -> np.ndarray:
+    """
+    Compute standard softmax of an input array.
+
+    Args:
+        x (np.ndarray): Input array.
+
+    Returns:
+        np.ndarray: Softmax probabilities.
+    """
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
 
-def load_top_canditates(output_csv_path, k=10):
+def temperature_scaled_softmax(x: np.ndarray, temperature: float = 8.0) -> np.ndarray:
+    """
+    Compute softmax probabilities with temperature scaling.
 
-    df = pd.read_csv(output_csv_path)
-    all_candidate_lists = []
+    Args:
+        x (np.ndarray): Input array of scores.
+        temperature (float): Temperature parameter to control sharpness. Default is 8.0.
 
-    for _, row in df.iterrows():
-        candidate_list = []
-        for i in range(1, k+1): 
-            label = str(row[f'label_{i}']).lower()
-            score = float(row[f'score_{i}'])
-            candidate_list.append((label, score))
-        all_candidate_lists.append(candidate_list)
-    
-    return all_candidate_lists
-from scipy.special import softmax
-
-def temperature_scaled_softmax(x, temperature=8.0):
+    Returns:
+        np.ndarray: Temperature-scaled softmax probabilities.
+    """
     x = np.array(x) / temperature
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
 
-def min_max_normalize(x):
+def min_max_normalize(x: np.ndarray) -> np.ndarray:
+    """
+    Normalize an array using min-max scaling and convert to probabilities.
+
+    Args:
+        x (np.ndarray): Input array.
+
+    Returns:
+        np.ndarray: Normalized probabilities.
+    """
     x = np.array(x)
     min_val, max_val = np.min(x), np.max(x)
     if max_val - min_val == 0:
@@ -57,7 +62,19 @@ def min_max_normalize(x):
     norm = (x - min_val) / (max_val - min_val)
     return norm / norm.sum()
 
-def load_top_candidates(output_csv_path, k=10):
+def load_top_candidates(output_csv_path: Union[str, Path], k: int = 10) -> tuple[list[list[tuple[str, float]]], pd.DataFrame]:
+    """
+    Load top-k candidate labels and convert their scores to temperature-scaled probabilities.
+
+    Args:
+        output_csv_path (Union[str, Path]): Path to the CSV file.
+        k (int): Number of top candidates to retrieve per row.
+
+    Returns:
+        tuple: A tuple containing:
+            - list of lists with (label, probability) tuples for each row.
+            - the loaded DataFrame.
+    """
     df = pd.read_csv(output_csv_path)
     all_candidate_lists = []
 
@@ -65,14 +82,23 @@ def load_top_candidates(output_csv_path, k=10):
         labels = [str(row[f'label_{i}']).lower() for i in range(1, k + 1)]
         scores = np.array([float(row[f'score_{i}']) for i in range(1, k + 1)])
         probs = temperature_scaled_softmax(scores)
-        print(sum(probs))
+        # print(sum(probs))
         candidate_list = list(zip(labels, probs))
-        print(candidate_list)
+        # print(candidate_list)
         all_candidate_lists.append(candidate_list)
 
     return all_candidate_lists, df
-import pandas as pd
-def retrieve_sentence_map(alignment_csv_path):
+
+def retrieve_sentence_map(alignment_csv_path: Union[str, Path]) -> dict:
+    """
+    Load a mapping from sentence names to full sentence texts from an alignment CSV.
+
+    Args:
+        alignment_csv_path (Union[str, Path]): Path to the alignment CSV file.
+
+    Returns:
+        dict: Mapping from sentence names to sentence strings.
+    """
     
     columns = [
         "VIDEO_ID",
@@ -95,14 +121,30 @@ def retrieve_sentence_map(alignment_csv_path):
 
 
 def create_sentence_comparison_csv(
-    output_csv_path,
-    sentence_name,
-    sentence,
-    alignment_csv_path,
-    save_path,
-    beam_size=3,
-    k=10,
-):
+    output_csv_path: Path,
+    sentence_name: str,
+    sentence: str,
+    alignment_csv_path: Union[str, Path],
+    save_path: Union[str, Path],
+    beam_size: int = 3,
+    k: int = 10,
+) -> None:
+    """
+    Create or append to a CSV file that compares decoder outputs to reference sentences.
+
+    Args:
+        output_csv_path (Path): Path to the CSV containing top-k predictions.
+        sentence_name (str): Sentence name identifier.
+        sentence (str): Decoded sentence text.
+        alignment_csv_path (Union[str, Path]): Path to alignment CSV with references.
+        save_path (Union[str, Path]): CSV file to append results to.
+        beam_size (int): Beam size used during decoding.
+        k (int): Top-k value used for prediction.
+
+    Returns:
+        None
+    """
+
     # Load the sentence map
     sentence_map = retrieve_sentence_map(alignment_csv_path)
     ground_truth = sentence_map.get(sentence_name, "[NOT FOUND]")
@@ -146,50 +188,94 @@ def create_sentence_comparison_csv(
         print(f"🧷 Backup saved to {backup_path}")
 
 
-import pandas as pd
-from pathlib import Path
-from typing import Union
-from nltk.translate.bleu_score import sentence_bleu
-from rouge_score import rouge_scorer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-
 def simple_tokenize(text: str) -> list:
+    """
+    Lowercase and split a string into tokens by whitespace.
+
+    Args:
+        text (str): Input text.
+
+    Returns:
+        list: List of tokens.
+    """
     return text.lower().split()
 
 
 def compute_sentence_bleu(reference: str, hypothesis: str) -> float:
-    if hypothesis.startswith("hello can"):
-            print(hypothesis)
-            print(reference)
+    """
+    Compute the BLEU score between a reference sentence and a hypothesis sentence.
+
+    Args:
+        reference (str): Ground-truth reference sentence.
+        hypothesis (str): Predicted or decoded sentence.
+
+    Returns:
+        float: BLEU score (0 to 1).
+    """
+    
+    # NOTE: This is for debugging purposes
+    # if hypothesis.startswith("hello can"):
+    #         print(hypothesis)
+    #         print(reference)
             
     ref_tokens = [simple_tokenize(reference)]
     ref_tokens2 = simple_tokenize(reference)
     hyp_tokens = simple_tokenize(hypothesis)
-    if hypothesis.startswith("hello can"):
-            print(hypothesis)
-            print(reference)
-            print(sentence_bleu(ref_tokens, hyp_tokens))
-            print(sentence_bleu(ref_tokens2, hyp_tokens))
+
+    # NOTE: This is for debugging purposes
+    # if hypothesis.startswith("hello can"):
+    #         print(hypothesis)
+    #         print(reference)
+    #         print(sentence_bleu(ref_tokens, hyp_tokens))
+    #         print(sentence_bleu(ref_tokens2, hyp_tokens))
           
-    
     return sentence_bleu(ref_tokens, hyp_tokens)
 
 
 def compute_rouge_individual(reference: str, hypothesis: str) -> tuple:
+    """
+    Compute ROUGE-1 and ROUGE-L F1 scores between a reference and hypothesis sentence.
+
+    Args:
+        reference (str): Ground-truth reference sentence.
+        hypothesis (str): Predicted or decoded sentence.
+
+    Returns:
+        tuple: (ROUGE-1 F1 score, ROUGE-L F1 score), each as float between 0 and 1.
+    """
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
     scores = scorer.score(reference, hypothesis)
     return scores['rouge1'].fmeasure, scores['rougeL'].fmeasure
 
 
 def compute_cosine_similarity(reference: str, hypothesis: str) -> float:
+    """
+    Compute cosine similarity between TF-IDF vectors of a reference and hypothesis sentence.
+
+    Args:
+        reference (str): Ground-truth reference sentence.
+        hypothesis (str): Predicted or decoded sentence.
+
+    Returns:
+        float: Cosine similarity score (0 to 1).
+    """
     vec = TfidfVectorizer().fit_transform([reference, hypothesis])
     return cosine_similarity(vec[0:1], vec[1:2])[0, 0]
 
 
-def evaluate_sentence_csv_rows(csv_path: Union[str, Path], output_path: Union[str, Path]):
-    df = pd.read_csv(csv_path)
+def evaluate_sentence_csv_rows(csv_path: Union[str, Path], output_path: Union[str, Path]) -> None:
+    """
+    Evaluate each row in a CSV containing reference and decoded sentences using BLEU, ROUGE-1,
+    ROUGE-L, and cosine similarity metrics. Appends scores as new columns and saves to a new CSV.
+
+    Args:
+        csv_path (Union[str, Path]): Path to input CSV file containing columns "SENTENCE" and "sentence_decoder".
+        output_path (Union[str, Path]): Path to save the CSV file with evaluation scores appended.
+
+    Returns:
+        None
+    """
+
     df = pd.read_csv(
     csv_path,
     quoting=csv.QUOTE_MINIMAL,
@@ -198,7 +284,7 @@ def evaluate_sentence_csv_rows(csv_path: Union[str, Path], output_path: Union[st
     dtype=str,
     keep_default_na=False,
     engine='python'  # THIS is critical for newline handling
-)
+    )
 
     bleu_scores = []
     rouge1_scores = []
@@ -216,8 +302,6 @@ def evaluate_sentence_csv_rows(csv_path: Union[str, Path], output_path: Union[st
             
 
         hypothesis = row["sentence_decoder"]
-        
-        
 
         # Compute scores
         bleu = compute_sentence_bleu(reference, hypothesis)
@@ -239,17 +323,26 @@ def evaluate_sentence_csv_rows(csv_path: Union[str, Path], output_path: Union[st
     df.to_csv(output_path, index=False)
     print(f"✅ Row-level evaluation saved to {output_path}")
 
-
-import pandas as pd
-from pathlib import Path
-from typing import List
-from src.Evaluation import evaluate
 def evaluate_and_save(
     save_path: Path,
     output_path: Path = Path("aml/results/evaluation.csv"),
     use_bert: bool = False,
     use_cosine: bool = True,
-):
+) -> None:
+    """
+    Run global corpus-level evaluation on sentences using BLEU, ROUGE, and optionally BERTScore or cosine similarity.
+    Appends global evaluation scores to a CSV file.
+
+    Args:
+        save_path (Path): Path to input CSV file containing reference and decoded sentences.
+        output_path (Path): Path to save CSV file with appended global scores. Default is "aml/results/evaluation.csv".
+        use_bert (bool): Whether to compute BERTScore. Default is False.
+        use_cosine (bool): Whether to compute average cosine similarity. Default is True.
+
+    Returns:
+        None
+    """
+
     # Load sentence comparison CSV
     df = pd.read_csv(save_path)
 
@@ -290,8 +383,19 @@ def evaluate_and_save(
     # Save final evaluated CSV
     df.to_csv(output_path, index=False)
     print(f"✅ Evaluation results saved to {output_path}")
-import re
-def augment_with_window_stride(input_csv_path, output_csv_path):
+
+def augment_with_window_stride(input_csv_path: Union[str, Path], output_csv_path: Union[str, Path]) -> None:
+    """
+    Add window size and stride columns to a CSV file based on patterns in 'output_csv_path' column.
+
+    Args:
+        input_csv_path (Union[str, Path]): Path to input CSV.
+        output_csv_path (Union[str, Path]): Path to save the augmented CSV.
+
+    Returns:
+        None
+    """
+        
     df = pd.read_csv(input_csv_path)
 
     # Extract Wxx and Sxx using regex from output_csv_path column
@@ -310,9 +414,29 @@ def augment_with_window_stride(input_csv_path, output_csv_path):
     print(f"✅ Saved with window/stride to {out_path}")
     
 
-def should_skip_decoding(csv_path, output_csv_path, sentence_name, beam_size, top_k):
+def should_skip_decoding(
+    csv_path: Union[str, Path],
+    output_csv_path: Path,
+    sentence_name: str,
+    beam_size: int,
+    top_k: int
+) -> bool:
+    """
+    Check if decoding should be skipped based on whether an entry already exists in a CSV.
+
+    Args:
+        csv_path (Union[str, Path]): Path to CSV file tracking existing decodings.
+        output_csv_path (Path): Path of output CSV file to match.
+        sentence_name (str): Name of the sentence.
+        beam_size (int): Beam size used for decoding.
+        top_k (int): Top-k parameter used for decoding.
+
+    Returns:
+        bool: True if decoding can be skipped, False otherwise.
+    """
+
     if not Path(csv_path).exists():
-        return False  # Nothing to skip, file doesn't exist yet
+        return False
 
     df = pd.read_csv(csv_path)
 
@@ -326,11 +450,18 @@ def should_skip_decoding(csv_path, output_csv_path, sentence_name, beam_size, to
 
     return match.any()
     
-import pandas as pd
-def table_summary():
+def table_summary(csv_path: Union[Path, str]) -> None:
+    """
+    Generate and print a summary table aggregating evaluation metrics
+    grouped by window size, stride, beam size, and top-k.
 
-    # Load your evaluated CSV file
-    csv_path = "aml/results/sentences_compare_evaluated.csv"
+    Parameters:
+        csv_path (Union[Path, str]): Path to the CSV file containing evaluation results.
+
+    Returns:
+        None
+    """
+
     df = pd.read_csv(csv_path)
 
     # Group by (window_size, stride, beam_size)
@@ -339,7 +470,7 @@ def table_summary():
     # Select metric columns that exist
     score_columns = [col for col in ["BLEU", "ROUGE-1", "ROUGE-L", "Cosine", "BERT-F1"] if col in df.columns]
 
-    # Group and aggregate
+    # Creating the summary DataFrame and printing it
     summary = (
         df.groupby(group_cols)[score_columns]
         .mean()
@@ -347,14 +478,7 @@ def table_summary():
         .reset_index()
     )
 
-    # Add count column
     counts = df.groupby(group_cols).size().reset_index(name="count")
-
-    # Merge counts into summary
     summary = pd.merge(summary, counts, on=group_cols)
-
-    # Sort for readability
     summary = summary.sort_values(by=group_cols).reset_index(drop=True)
-
-    # Show the summary table
     print(summary.to_string(index=False))

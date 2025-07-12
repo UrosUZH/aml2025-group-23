@@ -1,6 +1,9 @@
 src/__pycache__/
 test.py
-src/vocab_embed
+# Ignore results folder
+results/
+signclip_results/
+
 # Ignore everything under mock_videos/
 mock_videos/*
 
@@ -11,14 +14,9 @@ mock_videos/*
 !mock_videos/.*
 val_rgb_front_clips.zip
 val_rgb_front_clips/
-mock_videos/*
-mock_sentences/*
-src/gloss_vocab_embed
-src/vocab_embed_new
-src/vocab_embed_new2
-put_here.py
+data/vocab/gloss_vocab_embed
 
-signclip_results_vocab_new/
-results_old/
-signclip_results_old/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd

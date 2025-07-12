@@ -1,0 +1,17 @@
+# Default configuration for the AML project
+
+dataset_dir: "aml/data/how2sign_subset"
+results_dir: "aml/results"
+
+vocab_embed_dir: "aml/data/vocab/gloss_vocab_embed"
+vocab_text_path: "aml/data/vocab/gloss_vocab.txt"
+alignment_csv_path: "aml/data/mock_sentences/how2sign_realigned_val.csv"
+
+beam_size: 5
+window_size: 32
+stride: 32
+model_name: "asl_finetune"
+# top k for similarity search
+top_k_similar: 100
+# top k to pass to the Transformer decoder
+top_k_decode: 10

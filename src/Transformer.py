@@ -300,8 +300,42 @@ class TransformerDecoder:
         draft = self._post_process(best_tokens)
         return self._refine_sentence(draft) if self.refine else draft
 
-    def _extend_beam(self, gloss, p_s, tokens, score_so_far,
-                 lm_next, coverage_count, *, subtoken_tid=None) -> tuple:
+    def _extend_beam(self, gloss: str, p_s: float, tokens: list, score_so_far: float,
+                 lm_next: torch.Tensor, coverage_count: int, *, subtoken_tid: int = None) -> tuple | None:
+        """
+        Extend the current beam by adding a new gloss candidate and updating its score.
+
+        This method computes a new score for the beam by combining language model log-probabilities
+        and semantic probabilities. It also optionally adjusts the score based on scoring modes such
+        as length normalization, coverage, or entropy-based uncertainty.
+
+        Args:
+            gloss (str): The gloss candidate to add to the beam.
+            p_s (float): Semantic score probability for the gloss (e.g., from sign embedding similarity).
+            tokens (list): List of tokens (glosses) in the current partial beam sequence.
+            score_so_far (float): Accumulated score for the current beam so far.
+            lm_next (torch.Tensor): Pre-computed language model logits or probabilities for the next token.
+            coverage_count (int): Number of glosses included so far, used for coverage scoring.
+            subtoken_tid (int, optional): Token ID of the gloss subtoken if using cached lm_next.
+                If None, will recompute log-probability using `_full_gloss_logprob`.
+
+        Returns:
+            tuple | None: 
+                - If gloss passes the logp_lm threshold, returns a tuple:
+                    (new_tokens_list, new_score, updated_coverage_count).
+                - If gloss is skipped due to low log-probability, returns None.
+
+        Scoring details:
+            - Combines LM log-prob (logp_lm) and semantic log-prob (log(p_s)) weighted by self.alpha and self.beta.
+            - Applies optional scoring adjustments based on self.scoring_mode:
+                * "length_norm": Normalizes score by sequence length (penalizes longer beams).
+                * "coverage": Encourages including more glosses by rewarding higher coverage_count.
+                * "uncertainty": Penalizes beams with higher entropy (model uncertainty).
+
+        Notes:
+            - Uses self.min_logp_lm_threshold to prune low-likelihood beams.
+            - Uses internal debug flag to print intermediate scores and decisions.
+        """
         # LM score (if subtoken_tid provided use cached lm_next)
         if subtoken_tid is not None:
             logp_lm = lm_next[0, subtoken_tid].item()
